@@ -28,11 +28,11 @@ public class AppConfig {
 	 * 应用程序要使用哪个数据库，就把该数据库厂商的驱动以jar包形式引入进来，同时自身仅使用JDBC接口，编译期并不需要特定厂商的驱动。
 	 *
 	 * 访问数据库--使用 JDBC
-	 * 在Spring使用JDBC，
-	 * 首先我们通过IoC容器创建并管理一个DataSource实例，
-	 * 然后，Spring提供了一个JdbcTemplate，可以方便地让我们操作JDBC，
-	 * 因此，通常情况下，我们会实例化一个JdbcTemplate。顾名思义，这个类主要使用了Template模式。
-	 * Spring提供的 JdbcTemplate 采用Template模式，提供了一系列以回调为特点的工具方法，目的是避免繁琐的try...catch语句。
+	 * 在Spring使用JDBC(这是自己的排版)，
+	 * 		1.首先我们通过IoC容器创建并管理一个 DataSource 实例，
+	 * 		2.然后，Spring提供了一个 JdbcTemplate，可以方便地让我们操作JDBC，
+	 * 因此，通常情况下，我们会实例化一个JdbcTemplate。顾名思义，这个类主要使用了 Template 模式。
+	 * Spring提供的 JdbcTemplate 采用Template模式，提供了一系列以回调为特点的工具方法，目的是避免繁琐的try...catch语句。比如：
 	 * 		public User getUserById(long id) {
 	 *  	   // 注意传入的是ConnectionCallback:
 	 *  	   return jdbcTemplate.execute((Connection conn) -> {
@@ -54,21 +54,39 @@ public class AppConfig {
 	 *  	   });
 	 * 		}
 	 * 也就是说，上述回调方法允许获取Connection，然后做任何基于Connection的操作。
+	 * 我们总结一下JdbcTemplate的用法，那就是：
+	 *     针对简单查询，优选query()和queryForObject()，因为只需提供SQL语句、参数和RowMapper；
+	 *     针对更新操作，优选update()，因为只需提供SQL语句和参数；
+	 *     任何复杂的操作，最终也可以通过execute(ConnectionCallback)实现，因为拿到Connection就可以做任何JDBC操作。
+	 *
 	 *
 	 * 访问数据库--使用声明式事务
 	 * 如果要在Spring中操作事务，没必要手写JDBC事务，可以使用Spring提供的高级接口来操作事务。
 	 * Spring提供了一个 PlatformTransactionManager 来表示事务管理器，所有的事务都由它负责管理。而事务由 TransactionStatus 表示。
+	 * 如果手写事务代码，使用try...catch如下：
+	 * 		TransactionStatus tx = null;
+	 * 		try {
+	 * 		    // 开启事务:
+	 * 		    tx = txManager.getTransaction(new DefaultTransactionDefinition());
+	 * 		    // 相关JDBC操作:
+	 * 		    jdbcTemplate.update("...");
+	 * 		    jdbcTemplate.update("...");
+	 * 		    // 提交事务:
+	 * 		    txManager.commit(tx);
+	 * 		} catch (RuntimeException e) {
+	 * 		    // 回滚事务:
+	 * 		    txManager.rollback(tx);
+	 * 		    throw e;
+	 * 		}
 	 * Spring为啥要抽象出 PlatformTransactionManager 和 TransactionStatus ？
 	 * 原因是JavaEE除了提供JDBC事务外，它还支持分布式事务JTA（Java Transaction API）。
 	 * 因为我们的代码只需要JDBC事务，因此，在AppConfig中，需要再定义一个PlatformTransactionManager对应的Bean，它的实际类型是 DataSourceTransactionManager：
 	 *
-	 * 使用编程的方式使用Spring事务仍然比较繁琐，更好的方式是通过声明式事务来实现。使用声明式事务非常简单，
+	 * 使用编程的方式使用Spring事务仍然比较繁琐，更好的方式是通过声明式事务来实现。使用声明式事务非常简单，(这是自己的排版)
 	 * 		1. 在 AppConfig 中追加一个上述定义的 PlatformTransactionManager ，
-	 * 		2. @EnableTransactionManagement 就可以启用声明式事务。
-	 * 		3. 对需要事务支持的方法，加一个@Transactional注解：
-	 * 		注意：声明了@EnableTransactionManagement后，不必额外添加@EnableAspectJAutoProxy。
+	 * 		2. @EnableTransactionManagement 就可以启用声明式事务。（注意声明了该注解后，不必额外添加@EnableAspectJAutoProxy。）
+	 * 		3. 对需要事务支持的方法，加一个 @Transactional 注解：
 	 * Spring对一个声明式事务的方法，如何开启事务支持？原理仍然是AOP代理，即通过自动创建Bean的Proxy实现
-	 *
 	 *
 	 * 使用声明式事务的回滚事务：
 	 * 默认情况下，如果发生了RuntimeException，Spring的声明式事务将自动回滚。
@@ -146,6 +164,93 @@ public class AppConfig {
 	 * 在另一个线程中调用BonusService.addBonus()，它根本获取不到当前事务，
 	 * 因此，UserService.register()和BonusService.addBonus()两个方法，将分别开启两个完全独立的事务。
 	 * 换句话说，事务只能在当前线程传播，无法跨线程传播。
+	 *
+	 *
+	 * 访问数据库--使用DAO：
+	 * Spring提供了一个 JdbcDaoSupport 类，用于简化DAO的实现。这个JdbcDaoSupport没什么复杂的，核心代码就是持有一个JdbcTemplate：
+	 * 		public abstract class JdbcDaoSupport extends DaoSupport {
+	 * 		
+	 * 		    private JdbcTemplate jdbcTemplate;
+	 * 		
+	 * 		    public final void setJdbcTemplate(JdbcTemplate jdbcTemplate) {
+	 * 		        this.jdbcTemplate = jdbcTemplate;
+	 * 		        initTemplateConfig();
+	 * 		    }
+	 * 		
+	 * 		    public final JdbcTemplate getJdbcTemplate() {
+	 * 		        return this.jdbcTemplate;
+	 * 		    }
+	 * 		
+	 * 		    ...
+	 * 		}
+	 * 它的意图是子类直接从JdbcDaoSupport继承后，可以随时调用getJdbcTemplate()获得JdbcTemplate的实例。
+	 * 那么问题来了：因为JdbcDaoSupport的jdbcTemplate字段没有标记@Autowired，所以，子类想要注入JdbcTemplate，还得自己想个办法：
+	 * 		@Component
+	 * 		@Transactional
+	 * 		public class UserDao extends JdbcDaoSupport {
+	 * 		    @Autowired
+	 * 		    JdbcTemplate jdbcTemplate;
+	 *
+	 * 		    @PostConstruct
+	 * 		    public void init() {
+	 * 		        super.setJdbcTemplate(jdbcTemplate);
+	 * 		    }
+	 * 		}
+	 * 有的童鞋可能看出来了：既然UserDao都已经注入了JdbcTemplate，那再把它放到父类里，通过getJdbcTemplate()访问岂不是多此一举？
+	 *
+	 *
+	 * 访问数据库--集成Hibernate:
+	 * 使用JdbcTemplate的时候，我们用得最多的方法就是List<T> query(String sql, Object[] args, RowMapper rowMapper)。
+	 * 这个RowMapper的作用就是把ResultSet的一行记录映射为Java Bean。这种把关系数据库的表记录映射为Java对象的过程就是
+	 * ORM：Object-Relational Mapping。ORM既可以把记录转换成Java对象，也可以把Java对象转换为行记录。
+	 * 使用JdbcTemplate配合RowMapper可以看作是最原始的ORM。
+	 * 如果要实现更自动化的ORM，可以选择成熟的ORM框架，例如Hibernate。我们来看看如何在Spring中集成Hibernate。
+	 * 1.在AppConfig中，我们仍然需要创建DataSource、引入JDBC配置文件，以及启用声明式事务：
+	 *      @Configuration
+	 * 		@ComponentScan
+	 * 		@EnableTransactionManagement
+	 * 		@PropertySource("jdbc.properties")
+	 * 		public class AppConfig {
+	 * 		    @Bean
+	 * 		    DataSource createDataSource() {
+	 * 		        ...
+	 * 		    }
+	 * 		}
+	 * 		
+	 * 2.我们需要创建一个 LocalSessionFactoryBean：
+	 * 	   public class AppConfig {
+	 *     		@Bean
+	 *     		LocalSessionFactoryBean createSessionFactory(@Autowired DataSource dataSource) {
+	 *     		    var props = new Properties();
+	 *     		    props.setProperty("hibernate.hbm2ddl.auto", "update"); // 生产环境不要使用
+	 *     		    props.setProperty("hibernate.dialect", "org.hibernate.dialect.HSQLDialect");
+	 *     		    props.setProperty("hibernate.show_sql", "true");
+	 *     		    var sessionFactoryBean = new LocalSessionFactoryBean();
+	 *     		    sessionFactoryBean.setDataSource(dataSource);
+	 *     		    // 扫描指定的package获取所有entity class:
+	 *     		    sessionFactoryBean.setPackagesToScan("com.itranswarp.learnjava.entity");
+	 *     		    sessionFactoryBean.setHibernateProperties(props);
+	 *     		    return sessionFactoryBean;
+	 *     		}
+	 * 		}
+	 *		LocalSessionFactoryBean是一个FactoryBean，它会再自动创建一个SessionFactory，在Hibernate中，
+	 *		Session是封装了一个JDBC Connection的实例，而SessionFactory是封装了JDBC DataSource的实例，即SessionFactory持有连接池，
+	 *		每次需要操作数据库的时候，SessionFactory 创建一个新的Session，相当于从连接池获取到一个新的Connection。
+	 *		SessionFactory就是Hibernate提供的最核心的一个对象，但LocalSessionFactoryBean是Spring提供的为了让我们方便创建SessionFactory的类。
+	 * 3. 我们还需要创建HibernateTemplate以及HibernateTransactionManager：
+	 * 		public class AppConfig {
+	 * 		    @Bean
+	 * 		    HibernateTemplate createHibernateTemplate(@Autowired SessionFactory sessionFactory) {
+	 * 		        return new HibernateTemplate(sessionFactory);
+	 * 		    }
+	 * 		
+	 * 		    @Bean
+	 * 		    PlatformTransactionManager createTxManager(@Autowired SessionFactory sessionFactory) {
+	 * 		        return new HibernateTransactionManager(sessionFactory);
+	 * 		    }
+	 * 		}
+	 * 这两个Bean的创建都十分简单。HibernateTransactionManager是配合Hibernate使用声明式事务所必须的，
+	 * 而 HibernateTemplate 则是Spring为了便于我们使用Hibernate提供的工具类，不是非用不可，但推荐使用以简化代码。
 	 */
 	@Value("${jdbc.url}")
 	String jdbcUrl;
@@ -174,6 +279,13 @@ public class AppConfig {
 	}
 
 	public static void main(String[] args) {
+		/**
+		 * 在上述配置中：
+		 *     通过@PropertySource("jdbc.properties")读取数据库配置文件；
+		 *     通过@Value("${jdbc.url}")注入配置文件的相关配置；
+		 *     创建一个DataSource实例，它的实际类型是HikariDataSource，创建时需要用到注入的配置；
+		 *     创建一个JdbcTemplate实例，它需要注入DataSource，这是通过方法参数完成注入的。
+		 */
 		ApplicationContext context = new AnnotationConfigApplicationContext(AppConfig.class);
 		UserService userService = context.getBean(UserService.class);
 		// userService.register("bob@example.com", "password1", "Bob");
@@ -186,6 +298,7 @@ public class AppConfig {
 		for (User u : userService.getUsers(1)) {
 			System.out.println(u);
 		}
+		//和 IoC容器--定制 Bean 的容器初始化时创建Bean，容器关闭前销毁Bean 遥相呼应
 		((ConfigurableApplicationContext) context).close();
 	}
 }
