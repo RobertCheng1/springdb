@@ -6,11 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.PropertySource;
+import org.springframework.context.annotation.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.company.service.User;
@@ -18,8 +14,9 @@ import com.company.service.UserService;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
-@Configuration
-@ComponentScan
+
+@Configuration //表示该类是一个配置类，因为我们创建ApplicationContext时，使用的实现类是AnnotationConfigApplicationContext，必须传入一个标注了@Configuration的类名。
+@ComponentScan //告诉容器，自动搜索当前类所在的包以及子包，把所有标注为 @Component 的Bean自动创建出来，并根据 @Autowired 进行装配。
 @PropertySource("jdbc.properties")
 public class AppConfig {
 	/**
@@ -58,6 +55,10 @@ public class AppConfig {
 	 *     针对简单查询，优选query()和queryForObject()，因为只需提供SQL语句、参数和RowMapper；
 	 *     针对更新操作，优选update()，因为只需提供SQL语句和参数；
 	 *     任何复杂的操作，最终也可以通过execute(ConnectionCallback)实现，因为拿到Connection就可以做任何JDBC操作。
+	 * 实际上我们使用最多的仍然是各种查询。如果在设计表结构的时候，能够和JavaBean的属性一一对应，那么直接使用 BeanPropertyRowMapper 就很方便。
+	 * 如果表结构和JavaBean不一致怎么办？那就需要稍微改写一下查询，使结果集的结构和JavaBean保持一致。
+	 * 例如，表的列名是 office_address，而 JavaBean 属性是 workAddress，就需要指定别名，改写查询如下：
+	 * 		SELECT id, email, office_address AS workAddress, name FROM users WHERE email = ?
 	 *
 	 *
 	 * 访问数据库--使用声明式事务
@@ -180,7 +181,6 @@ public class AppConfig {
 	 * 		    public final JdbcTemplate getJdbcTemplate() {
 	 * 		        return this.jdbcTemplate;
 	 * 		    }
-	 * 		
 	 * 		    ...
 	 * 		}
 	 * 它的意图是子类直接从JdbcDaoSupport继承后，可以随时调用getJdbcTemplate()获得JdbcTemplate的实例。
@@ -197,6 +197,29 @@ public class AppConfig {
 	 * 		    }
 	 * 		}
 	 * 有的童鞋可能看出来了：既然UserDao都已经注入了JdbcTemplate，那再把它放到父类里，通过getJdbcTemplate()访问岂不是多此一举？
+	 * 我们可以编写一个AbstractDao，专门负责注入JdbcTemplate
+	 * 		public abstract class AbstractDao extends JdbcDaoSupport {
+	 * 		    @Autowired
+	 * 		    private JdbcTemplate jdbcTemplate;
+	 * 		
+	 * 		    @PostConstruct
+	 * 		    public void init() {
+	 * 		        super.setJdbcTemplate(jdbcTemplate);
+	 * 		    }
+	 * 		}
+	 * 这样，子类的代码就非常干净，可以直接调用getJdbcTemplate()：
+	 * 		@Component
+	 * 		@Transactional
+	 * 		public class UserDao extends AbstractDao {
+	 * 		    public User getById(long id) {
+	 * 		        return getJdbcTemplate().queryForObject(
+	 * 		                "SELECT * FROM users WHERE id = ?",
+	 * 		                new BeanPropertyRowMapper<>(User.class),
+	 * 		                id
+	 * 		        );
+	 * 		    }
+	 * 		    ...
+	 * 		}
 	 *
 	 *
 	 * 访问数据库--集成Hibernate:
@@ -251,6 +274,112 @@ public class AppConfig {
 	 * 		}
 	 * 这两个Bean的创建都十分简单。HibernateTransactionManager是配合Hibernate使用声明式事务所必须的，
 	 * 而 HibernateTemplate 则是Spring为了便于我们使用Hibernate提供的工具类，不是非用不可，但推荐使用以简化代码。
+	 *
+	 * 访问数据库--继承JPA:
+	 * JPA就是JavaEE的一个ORM标准，它的实现其实和Hibernate没啥本质区别，但是用户如果使用JPA，
+	 * 那么引用的就是javax.persistence这个“标准”包，而不是org.hibernate这样的第三方包。因为JPA只是接口，
+	 * 所以，还需要选择一个实现产品，跟JDBC接口和MySQL驱动一个道理。
+	 * 我们使用JPA时也完全可以选择Hibernate作为底层实现，但也可以选择其它的JPA提供方，比如EclipseLink。
+	 * Spring内置了JPA的集成，并支持选择Hibernate或EclipseLink作为实现。
+	 *
+	 * 使用Hibernate时，我们需要创建一个LocalSessionFactoryBean，并让它再自动创建一个SessionFactory。
+	 * 使用JPA也是类似的，我们需要创建一个LocalContainerEntityManagerFactoryBean，并让它再自动创建一个EntityManagerFactory：
+	 * 最后，我们还需要实例化一个JpaTransactionManager，以实现声明式事务
+	 * 有些童鞋可能从网上搜索得知JPA需要persistence.xml配置文件，以及复杂的orm.xml文件。这里我们负责地告诉大家，使用Spring+Hibernate作为JPA实现，无需任何配置文件。
+	 * 所有Entity Bean的配置和上一节完全相同，全部采用Annotation标注。我们现在只需关心具体的业务类如何通过JPA接口操作数据库。
+	 * 还是以UserService为例，除了标注 @Component 和 @Transactional 外，我们需要注入一个EntityManager，但是不要使用 Autowired，而是@PersistenceContext：
+	 * 		@Component
+	 * 		@Transactional
+	 * 		public class UserService {
+	 * 		    @PersistenceContext
+	 * 		    EntityManager em;
+	 * 		}
+	 *
+	 * 我们回顾一下JDBC、Hibernate和JPA提供的接口，实际上，它们的关系如下：
+	 * 		JDBC			Hibernate			JPA
+	 * 		DataSource		SessionFactory		EntityManagerFactory
+	 * 		Connection		Session				EntityManager
+	 *
+	 *
+	 * 访问数据库--集成MyBatis：
+	 * 使用Hibernate或JPA操作数据库时，这类ORM干的主要工作就是把ResultSet的每一行变成Java Bean，或者把Java Bean自动转换
+	 * 到INSERT或UPDATE语句的参数中，从而实现ORM。而ORM框架之所以知道如何把行数据映射到Java Bean，
+	 * 是因为我们在Java Bean的属性上给了足够的注解作为元数据，ORM框架获取Java Bean的注解后，就知道如何进行双向映射。===很有高度===
+	 * ORM框架通常提供了缓存，并且还分为一级缓存和二级缓存。
+	 * 一级缓存是指在一个Session范围内的缓存，常见的情景是根据主键查询时，两次查询可以返回同一实例：
+	 * 二级缓存是指跨Session的缓存，，一般默认关闭，需要手动配置。
+	 * 二级缓存极大的增加了数据的不一致性，原因在于SQL非常灵活，常常会导致意外的更新。例如：
+	 * 		// 线程1读取:
+	 * 		User user1 = session1.load(User.class, 123);
+	 * 		// 一段时间后，线程2读取:
+	 * 		User user2 = session2.load(User.class, 123);
+	 * 当二级缓存生效的时候，两个线程读取的User实例是一样的，但是，数据库对应的行记录完全可能被修改，例如：
+	 *  	// 给老用户增加100积分:
+	 * 		UPDATE users SET bonus = bonus + 100 WHERE createdAt <= ?
+	 * ORM无法判断id=123的用户是否受该UPDATE语句影响。考虑到数据库通常会支持多个应用程序，此UPDATE语句可能由其他进程执行，ORM框架就更不知道了。
+	 * 我们把这种ORM框架称之为全自动ORM框架。
+	 * 对比Spring提供的 JdbcTemplate，它和 ORM 框架相比，主要有几点差别：
+	 *     1. 查询后需要手动提供Mapper实例以便把ResultSet的每一行变为Java对象；
+	 *     2. 增删改操作所需的参数列表，需要手动传入，即把User实例变为[user.id, user.name, user.email]这样的列表，比较麻烦。
+	 * 但是JdbcTemplate的优势在于它的确定性：即每次读取操作一定是数据库操作而不是缓存，所执行的SQL是完全确定的，
+	 * 缺点就是代码比较繁琐，构造INSERT INTO users VALUES (?,?,?)更是复杂。
+	 * 所以，介于全自动ORM如Hibernate和手写全部如JdbcTemplate之间，还有一种半自动的ORM，
+	 * 它只负责把ResultSet自动映射到Java Bean，或者自动填充Java Bean参数，但仍需自己写出SQL。MyBatis就是这样一种半自动化ORM框架。
+	 *
+	 * 我们来看看如何在Spring中集成MyBatis
+	 * 首先，我们要引入MyBatis本身，其次，由于Spring并没有像Hibernate那样内置对MyBatis的集成，
+	 * 所以，我们需要再引入 MyBatis 官方自己开发的一个与 Spring 集成的库： ===注意这句话的精确表达===
+	 *     org.mybatis:mybatis:3.5.4
+	 *     org.mybatis:mybatis-spring:2.0.4
+	 * 再回顾一下Hibernate和JPA的SessionFactory与EntityManagerFactory，MyBatis与之对应的是SqlSessionFactory和SqlSession：
+	 * 		JDBC		Hibernate			JPA						MyBatis
+	 * 		DataSource	SessionFactory		EntityManagerFactory	SqlSessionFactory
+	 * 		Connection	Session				EntityManager			SqlSession
+	 * 可见，ORM的设计套路都是类似的。使用MyBatis的核心就是创建SqlSessionFactory，这里我们需要创建的是SqlSessionFactoryBean
+	 *      @Bean
+	 * 		SqlSessionFactoryBean createSqlSessionFactoryBean(@Autowired DataSource dataSource) {
+	 *     		var sqlSessionFactoryBean = new SqlSessionFactoryBean();
+	 *     		sqlSessionFactoryBean.setDataSource(dataSource);
+	 *     		return sqlSessionFactoryBean;
+	 * 		}
+	 * 因为MyBatis可以直接使用Spring管理的声明式事务，因此，创建事务管理器和使用JDBC是一样的：
+	 * 		@Bean
+	 * 		PlatformTransactionManager createTxManager(@Autowired DataSource dataSource) {
+	 *     		return new DataSourceTransactionManager(dataSource);
+	 * 		}
+	 * 和 Hibernate不同的是，MyBatis使用Mapper来实现映射，而且Mapper必须是接口。我们以User类为例，在User类和users表之间映射的UserMapper编写如下：
+	 * 		public interface UserMapper {
+	 * 		    @Select("SELECT * FROM users WHERE id = #{id}")
+	 * 			User getById(@Param("id") long id);
+	 * 		}
+	 * 注意：这里的Mapper不是JdbcTemplate的RowMapper的概念，它是定义访问users表的接口方法。
+	 * 比如我们定义了一个User getById(long)的主键查询方法，不仅要定义接口方法本身，还要明确写出查询的SQL，这里用注解@Select标记。
+	 * SQL语句的任何参数，都与方法参数按名称对应。例如，方法参数id的名字通过注解@Param()标记为id，则SQL语句里将来替换的占位符就是#{id}。
+	 * 有了UserMapper接口，还需要对应的实现类才能真正执行这些数据库操作的方法。虽然可以自己写实现类，但我们除了编写UserMapper接口外，还有BookMapper、BonusMapper……一个一个写太麻烦，
+	 * 因此，MyBatis提供了一个MapperFactoryBean来自动创建所有 Mapper的实现类。可以用一个简单的注解来启用它：
+	 * 		@MapperScan("com.itranswarp.learnjava.mapper")
+	 * 		...其他注解...
+	 * 		public class AppConfig {
+	 * 		    ...
+	 * 		}
+	 * 有了 @MapperScan，就可以让MyBatis自动扫描指定包的所有Mapper并创建实现类。在真正的业务逻辑中，我们可以直接注入：
+	 * 		@Component
+	 * 		@Transactional
+	 * 		public class UserService {
+	 * 		    // 注入UserMapper:
+	 * 		    @Autowired
+	 * 		    UserMapper userMapper;
+	 * 		
+	 * 		    public User getUserById(long id) {
+	 * 		        // 调用Mapper方法:
+	 * 		        User user = userMapper.getById(id);
+	 * 		        if (user == null) {
+	 * 		            throw new RuntimeException("User not found by id.");
+	 * 		        }
+	 * 		        return user;
+	 * 		    }
+	 * 		}
+	 * 可见，业务逻辑主要就是通过XxxMapper定义的数据库方法来访问数据库。
 	 */
 	@Value("${jdbc.url}")
 	String jdbcUrl;
