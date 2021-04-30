@@ -85,7 +85,8 @@ public class AppConfig {
 	 *
 	 * 使用编程的方式使用Spring事务仍然比较繁琐，更好的方式是通过声明式事务来实现。使用声明式事务非常简单，(这是自己的排版)
 	 * 		1. 在 AppConfig 中追加一个上述定义的 PlatformTransactionManager ，
-	 * 		2. @EnableTransactionManagement 就可以启用声明式事务。（注意声明了该注解后，不必额外添加@EnableAspectJAutoProxy。）
+	 * 		2. @EnableTransactionManagement 就可以启用声明式事务。（注意声明了该注解后，不必额外添加@EnableAspectJAutoProxy；
+	 * 	 	   原因大概是 Spring对一个声明式事务的方法，如何开启事务支持？原理仍然是AOP代理，即通过自动创建Bean的Proxy实现）
 	 * 		3. 对需要事务支持的方法，加一个 @Transactional 注解：
 	 * Spring对一个声明式事务的方法，如何开启事务支持？原理仍然是AOP代理，即通过自动创建Bean的Proxy实现
 	 *
@@ -107,6 +108,7 @@ public class AppConfig {
 	 * 		    ...
 	 * 		}
 	 * 上述代码表示在抛出RuntimeException或IOException时，事务将回滚。
+	 * 为了简化代码，我们强烈建议业务异常体系从RuntimeException派生，这样就不必声明任何特殊异常即可让Spring的声明式事务正常工作。
 	 *
 	 * 使用声明式事务的事务边界：
 	 * 在使用事务的时候，明确事务边界非常重要。对于声明式事务，例如，下面的register()方法：
