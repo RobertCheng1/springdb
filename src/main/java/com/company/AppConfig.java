@@ -84,8 +84,8 @@ public class AppConfig {
 	 * 因为我们的代码只需要JDBC事务，因此，在AppConfig中，需要再定义一个PlatformTransactionManager对应的Bean，它的实际类型是 DataSourceTransactionManager：
 	 *
 	 * 使用编程的方式使用Spring事务仍然比较繁琐，更好的方式是通过声明式事务来实现。使用声明式事务非常简单，(这是自己的排版)
-	 * 		1. 在 AppConfig 中追加一个上述定义的 PlatformTransactionManager ，
-	 * 		2. @EnableTransactionManagement 就可以启用声明式事务。（注意声明了该注解后，不必额外添加@EnableAspectJAutoProxy；
+	 * 		1. (除了) 在 AppConfig 中追加一个上述定义的 PlatformTransactionManager ，
+	 * 		2. (再加一个) @EnableTransactionManagement 就可以启用声明式事务。（注意声明了该注解后，不必额外添加@EnableAspectJAutoProxy；
 	 * 	 	   原因大概是 Spring对一个声明式事务的方法，如何开启事务支持？原理仍然是AOP代理，即通过自动创建Bean的Proxy实现）
 	 * 		3. 对需要事务支持的方法，加一个 @Transactional 注解：
 	 * Spring对一个声明式事务的方法，如何开启事务支持？原理仍然是AOP代理，即通过自动创建Bean的Proxy实现
