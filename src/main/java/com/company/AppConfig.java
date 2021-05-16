@@ -258,10 +258,11 @@ public class AppConfig {
 	 *     		    return sessionFactoryBean;
 	 *     		}
 	 * 		}
-	 *		LocalSessionFactoryBean是一个FactoryBean，它会再自动创建一个SessionFactory，在Hibernate中，
-	 *		Session是封装了一个JDBC Connection的实例，而SessionFactory是封装了JDBC DataSource的实例，即SessionFactory持有连接池，
+	 *		LocalSessionFactoryBean 是一个FactoryBean，它会再自动创建一个 SessionFactory，在Hibernate中，
+	 *		Session是封装了一个JDBC Connection的实例，而 SessionFactory 是封装了JDBC DataSource的实例，即SessionFactory持有连接池，
 	 *		每次需要操作数据库的时候，SessionFactory 创建一个新的Session，相当于从连接池获取到一个新的Connection。
-	 *		SessionFactory就是Hibernate提供的最核心的一个对象，但LocalSessionFactoryBean是Spring提供的为了让我们方便创建SessionFactory的类。
+	 *		SessionFactory 就是Hibernate提供的最核心的一个对象，但 LocalSessionFactoryBean 是Spring提供的为了让我们方便创建SessionFactory的类。
+	 *	   （对比下文提到的：由于Spring并没有像Hibernate那样内置对MyBatis的集成）
 	 * 3. 我们还需要创建HibernateTemplate以及HibernateTransactionManager：
 	 * 		public class AppConfig {
 	 * 		    @Bean
@@ -276,8 +277,12 @@ public class AppConfig {
 	 * 		}
 	 * 这两个Bean的创建都十分简单。HibernateTransactionManager是配合Hibernate使用声明式事务所必须的，
 	 * 而 HibernateTemplate 则是Spring为了便于我们使用Hibernate提供的工具类，不是非用不可，但推荐使用以简化代码。
+	 * （对比下文提到的：由于Spring并没有像Hibernate那样内置对MyBatis的集成）
+	 * 注意：使用Spring集成Hibernate，配合JPA注解，无需任何额外的XML配置。
+	 * 类似User、Book这样的用于ORM的Java Bean，我们通常称之为Entity Bean。
 	 *
-	 * 访问数据库--继承JPA:
+	 *
+	 * 访问数据库--集成JPA:
 	 * JPA就是JavaEE的一个ORM标准，它的实现其实和Hibernate没啥本质区别，但是用户如果使用JPA，
 	 * 那么引用的就是javax.persistence这个“标准”包，而不是org.hibernate这样的第三方包。因为JPA只是接口，
 	 * 所以，还需要选择一个实现产品，跟JDBC接口和MySQL驱动一个道理。
@@ -330,7 +335,8 @@ public class AppConfig {
 	 *
 	 * 我们来看看如何在Spring中集成MyBatis
 	 * 首先，我们要引入MyBatis本身，其次，由于Spring并没有像Hibernate那样内置对MyBatis的集成，
-	 * 所以，我们需要再引入 MyBatis 官方自己开发的一个与 Spring 集成的库： ===注意这句话的精确表达===
+	 * (对比上文提到的：LocalSessionFactoryBean 是Spring提供的为了让我们方便创建SessionFactory的类 和 HibernateTemplate则是Spring为了便于我们使用Hibernate提供的工具类)
+	 * 所以，我们需要再引入 MyBatis 官方自己开发的一个与 Spring 集成的库： ===术语：注意这句话的精确表达===
 	 *     org.mybatis:mybatis:3.5.4
 	 *     org.mybatis:mybatis-spring:2.0.4
 	 * 再回顾一下Hibernate和JPA的SessionFactory与EntityManagerFactory，MyBatis与之对应的是SqlSessionFactory和SqlSession：
